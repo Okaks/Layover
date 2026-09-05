@@ -10,6 +10,8 @@ a Nigerian fintech, August 2026.
 
 import streamlit as st
 
+import deck_export
+
 st.set_page_config(page_title="Layover", page_icon="◆", layout="wide")
 
 st.markdown("""
@@ -87,6 +89,15 @@ if holding:
     )
 
 st.sidebar.markdown("---")
+st.sidebar.markdown("### Reporting period")
+period = st.sidebar.radio("", ["Annual", "Quarterly", "Monthly"], label_visibility="collapsed",
+                          help="Scales volume, cost and payment counts. Capital tied up is a standing "
+                               "balance and does not scale.")
+PERIOD_FACTOR = {"Annual": 1.0, "Quarterly": 0.25, "Monthly": 1/12}
+pf = PERIOD_FACTOR[period]
+p_adj = period.lower()
+
+st.sidebar.markdown("---")
 st.sidebar.markdown("### Local conditions")
 rate = st.sidebar.slider("Cost of capital, annual (%)", 5, 40, 22,
                          help="What idle working capital costs you. Local money-market rates or your own "
@@ -96,19 +107,30 @@ stall_cost_days = st.sidebar.slider("Days lost when a payment stalls", 1, 30, 7,
                                          "This is how long before it clears.")
 
 st.sidebar.markdown("---")
+st.sidebar.markdown("### Payments held for documentation")
+st.sidebar.caption("Share of payments stopped for paperwork on each route. Modelling assumptions - "
+                   "change them to what you actually see.")
+STALLS = {}
+for _k, _r in ROUTES.items():
+    STALLS[_k] = st.sidebar.slider(_r["name"], 0, 60, int(_r["stall_rate"] * 100), 1,
+                                   key=f"sr_{_k}") / 100
+
+st.sidebar.markdown("---")
 st.sidebar.caption(
     "Timings and stall rates come from a primary interview with a serving treasury analyst at a Nigerian "
     "fintech, August 2026. Cost of capital and buffer are yours to set - no assumption is hidden inside "
     "the model."
 )
 
-annual_volume = amount * per_month * 12
+annual_volume = amount * per_month * 12 * pf
+payment_count = per_month * 12 * pf
 daily_rate = rate / 100 / 365
 
 
-def evaluate(r):
+def evaluate(key, r):
     days = r["days_typical"]
-    effective_days = days + r["stall_rate"] * stall_cost_days
+    stall_rate = STALLS[key]
+    effective_days = days + stall_rate * stall_cost_days
     in_transit = amount * per_month * (effective_days / 30)
     buffer_held = amount * (buffer_pct / 100) * min(1.0, effective_days / 3.0) if holding else 0.0
     capital_tied = in_transit + buffer_held
@@ -116,12 +138,13 @@ def evaluate(r):
         "days": days, "effective_days": effective_days,
         "in_transit": in_transit, "buffer_held": buffer_held,
         "capital_tied": capital_tied,
-        "annual_cost": capital_tied * daily_rate * 365,
-        "stalled": r["stall_rate"] * per_month * 12,
+        "annual_cost": capital_tied * daily_rate * 365 * pf,
+        "stalled": stall_rate * per_month * 12 * pf,
+        "stall_rate": stall_rate,
     }
 
 
-results = {k: evaluate(v) for k, v in ROUTES.items()}
+results = {k: evaluate(k, v) for k, v in ROUTES.items()}
 best = min(results, key=lambda k: results[k]["annual_cost"])
 worst = max(results, key=lambda k: results[k]["annual_cost"])
 saving = results[worst]["annual_cost"] - results[best]["annual_cost"]
@@ -129,12 +152,21 @@ saving = results[worst]["annual_cost"] - results[best]["annual_cost"]
 # ---------------------------------------------------------------- headline
 
 st.markdown("---")
-h1, h2, h3 = st.columns(3)
-h1.metric("Annual payment volume", f"${annual_volume:,.0f}")
-h2.metric("Cost of the slowest route", f"${results[worst]['annual_cost']:,.0f}",
-          help="Capital tied up in transit and in buffer, priced at your cost of capital.")
-h3.metric("Difference against the fastest", f"${saving:,.0f}",
-          delta=f"-{100*saving/max(results[worst]['annual_cost'],1):.0f}%", delta_color="inverse")
+pct = 100 * saving / max(results[worst]["annual_cost"], 1)
+hcards = [
+    (f"{period} payment volume", f"${annual_volume:,.0f}", f"{payment_count:.0f} payments"),
+    (f"{period} cost of the slowest route", f"${results[worst]['annual_cost']:,.0f}",
+     "capital tied up, priced at your cost of capital"),
+    (f"{period} difference against the fastest", f"${saving:,.0f}", f"{pct:.0f}% lower"),
+]
+for col, (label, value, sub) in zip(st.columns(3), hcards):
+    with col:
+        st.markdown(
+            f'<div class="route"><div class="unit">{label}</div>'
+            f'<div class="big" style="margin:0.35rem 0 0.2rem;">{value}</div>'
+            f'<div class="rsub" style="margin:0;">{sub}</div></div>',
+            unsafe_allow_html=True,
+        )
 
 st.markdown("---")
 cols = st.columns(3)
@@ -197,7 +229,7 @@ with ca:
     )
 
 with cb:
-    st.markdown("**Payments held for documentation, per year**")
+    st.markdown(f"**Payments held for documentation, {p_adj}**")
     for key, r in ROUTES.items():
         st.markdown(
             f'<div style="padding:0.45rem 0; border-bottom:1px solid #1E2836;">{r["name"]}<br>'
@@ -207,13 +239,41 @@ with cb:
         )
     st.caption(
         f"At {stall_cost_days} days lost each, that's "
-        f"{results['local_dom']['stalled']*stall_cost_days:.0f} days of delay a year on the slowest route "
+        f"{results['local_dom']['stalled']*stall_cost_days:.0f} days of delay on the slowest route "
         f"against {results['stablecoin']['stalled']*stall_cost_days:.0f} on the fastest."
     )
 
 # ---------------------------------------------------------------- method
 
 st.markdown("---")
+ex1, ex2 = st.columns([1, 2.2])
+with ex1:
+    ctx = {
+        "period_label": period, "volume": annual_volume, "amount": amount,
+        "per_month": per_month, "rate": rate, "buffer_pct": buffer_pct, "holding": holding,
+        "stall_days": stall_cost_days, "payment_count": payment_count,
+        "saving": saving,
+        "saving_pct": 100 * saving / max(results[worst]["annual_cost"], 1),
+        "worst": worst, "best": best,
+        "routes": {k: {"name": ROUTES[k]["name"], "days": ROUTES[k]["days_typical"],
+                       "range": f"{ROUTES[k]['days_best']:.2g}-{ROUTES[k]['days_worst']:.2g} days",
+                       "capital": results[k]["capital_tied"], "cost": results[k]["annual_cost"],
+                       "stalled": results[k]["stalled"]} for k in ROUTES},
+    }
+    st.download_button(
+        "Download this as a deck",
+        data=deck_export.build_deck(ctx),
+        file_name=f"layover-{period.lower()}.pptx",
+        mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        type="primary",
+    )
+with ex2:
+    st.caption(
+        "Five slides built from exactly the figures on this page, including a slide listing every input "
+        "used so the numbers can be checked. Nothing is written into it that isn't shown here."
+    )
+
+st.markdown("")
 with st.expander("How this is calculated"):
     st.markdown("""
 **Capital tied up** is money in transit plus, where you hold one, the buffer kept against delay. Money in
