@@ -1,29 +1,28 @@
 """
-Value Date - settlement route simulator.
+Layover - settlement route simulator.
 
 Prices the working capital a company ties up because cross-border settlement
-takes time - either waiting for money in transit, or releasing it early to be
-sure a supplier is paid on time.
+takes time: money in transit, and money held against the delay.
 
 Route timings come from a primary interview with a serving treasury analyst at
-a Nigerian fintech, August 2026. Every figure on the page is editable.
+a Nigerian fintech, August 2026.
 """
 
 import streamlit as st
 
-st.set_page_config(page_title="Value Date", page_icon="◆", layout="wide")
+st.set_page_config(page_title="Layover", page_icon="◆", layout="wide")
 
 st.markdown("""
 <style>
-  .block-container {padding-top: 2.2rem; max-width: 1320px;}
+  .block-container {padding-top: 2.2rem; max-width: 1300px;}
   h1, h2, h3 {letter-spacing: -0.015em;}
-  .lede {color:#8FA3BF; font-size:0.95rem; line-height:1.6; max-width:72ch;}
+  .lede {color:#8FA3BF; font-size:0.95rem; line-height:1.6; max-width:70ch;}
   .route {border:1px solid #1E2836; border-radius:4px; padding:1rem 1.1rem; height:100%;}
   .route-win {border-color:#E0A33E;}
   .rname {font-weight:600; font-size:1.02rem; margin-bottom:0.15rem;}
   .rsub {color:#8FA3BF; font-size:0.8rem; margin-bottom:0.9rem;}
-  .big {font-size:1.75rem; font-weight:600; line-height:1.15;}
-  .unit {color:#8FA3BF; font-size:0.76rem; text-transform:uppercase; letter-spacing:0.05em;}
+  .big {font-size:1.9rem; font-weight:600; line-height:1.1;}
+  .unit {color:#8FA3BF; font-size:0.78rem; text-transform:uppercase; letter-spacing:0.05em;}
   .src {color:#6E7F96; font-size:0.82rem; line-height:1.55;}
   .quote {border-left:2px solid #E0A33E; padding-left:0.9rem; color:#B8C4D4;
           font-size:0.92rem; line-height:1.65;}
@@ -34,7 +33,7 @@ ROUTES = {
     "local_dom": {
         "name": "Local domiciliary account",
         "sub": "Instruction to a local bank, settling cross-currency",
-        "days": 2.0, "hold": 22,
+        "days_best": 1.0, "days_typical": 2.0, "days_worst": 3.0, "stall_rate": 0.22,
         "basis": ("Once it crosses currencies it is T+1 at best and can be T+2 or T+3. The bank may process "
                   "within the hour if pressed, or at end of day if not - and that depends on relationship, "
                   "not on anything the company controls."),
@@ -42,180 +41,133 @@ ROUTES = {
     "offshore": {
         "name": "Offshore account, matched currency",
         "sub": "Paying from a USD account into a USD beneficiary",
-        "days": 0.3, "hold": 8,
+        "days_best": 0.1, "days_typical": 0.3, "days_worst": 1.0, "stall_rate": 0.08,
         "basis": ("A US offshore account paying into the US lands same day, usually within hours. Requires "
                   "holding the currency in the right place before the invoice arrives."),
     },
     "stablecoin": {
         "name": "Stablecoin settlement rail",
         "sub": "Local currency in, stablecoin transport, local payout",
-        "days": 0.15, "hold": 6,
+        "days_best": 0.05, "days_typical": 0.15, "days_worst": 0.5, "stall_rate": 0.06,
         "basis": ("Settles continuously rather than on banking hours. Verification sits with a regulated "
                   "counterparty holding the company's details from onboarding."),
     },
 }
 
-st.title("What settlement time costs you")
+st.title("What does this payment actually cost you")
 st.markdown(
-    '<p class="lede">Cross-border settlement takes days, and those days cost money whether you wait for '
-    'them or plan around them. Set the figures below to your own and see what your current route ties up.</p>',
+    '<p class="lede">Not the fee. The days your money spends in transit, the capital you have to hold '
+    'because of those days, and the share of payments that stall on paperwork. Built on what a serving '
+    'treasury analyst described, not on list pricing.</p>',
     unsafe_allow_html=True,
 )
 
-# ---------------------------------------------------------------- sidebar
+# ---------------------------------------------------------------- inputs
 
-st.sidebar.markdown("### Your payments")
-st.sidebar.caption("Set these to your own figures. Every number on the page is built from what you enter.")
-
+st.sidebar.markdown("### Your payment profile")
 amount = st.sidebar.number_input(
-    "Typical size of one payment (USD)", 1_000, 50_000_000, 250_000, 10_000,
+    "Typical payment size (USD)", 1_000, 50_000_000, 250_000, 10_000,
     help="A single transaction, not a monthly or annual total.",
 )
 per_month = st.sidebar.slider("Payments per month", 1, 500, 12)
-rate = st.sidebar.slider("Cost of capital, annual (%)", 5, 40, 22)
 
-st.sidebar.markdown("---")
-st.sidebar.markdown("### How you handle the delay")
 approach = st.sidebar.radio(
-    "",
-    ["Send when due and wait", "Release early so it arrives on time"],
-    label_visibility="collapsed",
+    "How you handle the delay",
+    ["Hold capital against the delay", "Send when due and wait"],
+    help="Whether you keep extra working capital available because settlement is slow, or simply "
+         "send payments when they fall due and absorb the wait.",
 )
-lead_days = 0.0
-if approach.startswith("Release"):
-    lead_days = st.sidebar.slider("Days you release ahead of the due date", 0.5, 21.0, 5.0, 0.5)
+holding = approach.startswith("Hold")
+
+buffer_pct = 0
+if holding:
+    buffer_pct = st.sidebar.slider(
+        "Buffer held against settlement delay (%)", 0, 100, 40,
+        help="How much extra you keep on hand because money in transit isn't available.",
+    )
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("### Route timings")
-st.sidebar.caption("Days to land, and the share of payments held for documentation. Change these to match "
-                   "what you actually see.")
-
-routes = {k: dict(v) for k, v in ROUTES.items()}
-for k in routes:
-    st.sidebar.markdown(f"**{routes[k]['name']}**")
-    c1, c2 = st.sidebar.columns(2)
-    routes[k]["days"] = c1.number_input("days", 0.0, 30.0, float(ROUTES[k]["days"]), 0.05,
-                                        key=f"d_{k}", label_visibility="visible")
-    routes[k]["hold"] = c2.number_input("held %", 0, 60, ROUTES[k]["hold"], 1,
-                                        key=f"h_{k}", label_visibility="visible")
-
-st.sidebar.markdown("---")
-stall_cost_days = st.sidebar.slider(
-    "Extra days when a payment is held", 1, 30, 7,
-    help="A payment stopped for documentation isn't lost, it waits. This is how long before it clears.",
-)
+st.sidebar.markdown("### Local conditions")
+rate = st.sidebar.slider("Cost of capital, annual (%)", 5, 40, 22,
+                         help="What idle working capital costs you. Local money-market rates or your own "
+                              "borrowing cost.")
+stall_cost_days = st.sidebar.slider("Days lost when a payment stalls", 1, 30, 7,
+                                    help="A payment held for documentation doesn't fail - it waits. "
+                                         "This is how long before it clears.")
 
 st.sidebar.markdown("---")
 st.sidebar.caption(
-    "Route timings come from a primary interview with a serving treasury analyst at a Nigerian fintech, "
-    "August 2026. Hold rates are modelling assumptions. Everything here is editable."
+    "Timings and stall rates come from a primary interview with a serving treasury analyst at a Nigerian "
+    "fintech, August 2026. Cost of capital and buffer are yours to set - no assumption is hidden inside "
+    "the model."
 )
 
-daily_rate = rate / 100 / 365
 annual_volume = amount * per_month * 12
+daily_rate = rate / 100 / 365
 
 
 def evaluate(r):
-    transit = r["days"] + (r["hold"] / 100) * stall_cost_days
-    committed = max(transit, lead_days) if lead_days else transit
-    early = max(0.0, committed - transit)
-    cap_transit = amount * per_month * (transit / 30)
-    cap_early = amount * per_month * (early / 30)
+    days = r["days_typical"]
+    effective_days = days + r["stall_rate"] * stall_cost_days
+    in_transit = amount * per_month * (effective_days / 30)
+    buffer_held = amount * (buffer_pct / 100) * min(1.0, effective_days / 3.0) if holding else 0.0
+    capital_tied = in_transit + buffer_held
     return {
-        "transit": transit, "early": early, "committed": committed,
-        "cap_transit": cap_transit, "cap_early": cap_early,
-        "capital": cap_transit + cap_early,
-        "cost_transit": cap_transit * daily_rate * 365,
-        "cost_early": cap_early * daily_rate * 365,
-        "annual_cost": (cap_transit + cap_early) * daily_rate * 365,
-        "held_per_year": (r["hold"] / 100) * per_month * 12,
+        "days": days, "effective_days": effective_days,
+        "in_transit": in_transit, "buffer_held": buffer_held,
+        "capital_tied": capital_tied,
+        "annual_cost": capital_tied * daily_rate * 365,
+        "stalled": r["stall_rate"] * per_month * 12,
     }
 
 
-res = {k: evaluate(v) for k, v in routes.items()}
-cheapest = min(res, key=lambda k: res[k]["annual_cost"])
-dearest = max(res, key=lambda k: res[k]["annual_cost"])
-saving = res[dearest]["annual_cost"] - res[cheapest]["annual_cost"]
-planning = lead_days > 0
+results = {k: evaluate(v) for k, v in ROUTES.items()}
+best = min(results, key=lambda k: results[k]["annual_cost"])
+worst = max(results, key=lambda k: results[k]["annual_cost"])
+saving = results[worst]["annual_cost"] - results[best]["annual_cost"]
 
 # ---------------------------------------------------------------- headline
 
 st.markdown("---")
 h1, h2, h3 = st.columns(3)
 h1.metric("Annual payment volume", f"${annual_volume:,.0f}")
-h2.metric("Capital tied up, slowest route", f"${res[dearest]['capital']:,.0f}")
-h3.metric("Annual cost of that capital", f"${res[dearest]['annual_cost']:,.0f}",
-          delta=f"${saving:,.0f} lower on the fastest route", delta_color="inverse")
+h2.metric("Cost of the slowest route", f"${results[worst]['annual_cost']:,.0f}",
+          help="Capital tied up in transit and in buffer, priced at your cost of capital.")
+h3.metric("Difference against the fastest", f"${saving:,.0f}",
+          delta=f"-{100*saving/max(results[worst]['annual_cost'],1):.0f}%", delta_color="inverse")
 
 st.markdown("---")
 cols = st.columns(3)
-for col, (key, r) in zip(cols, routes.items()):
-    e = res[key]
-    win = " route-win" if key == cheapest else ""
-    if planning:
-        detail = (
-            f'<div class="unit">In transit</div>'
-            f'<div class="big" style="font-size:1.35rem;">${e["cap_transit"]:,.0f}</div>'
-            f'<div class="rsub">${e["cost_transit"]:,.0f} a year &middot; {e["transit"]:.1f} days moving</div>'
-            f'<div class="unit">Released early</div>'
-            f'<div class="big" style="font-size:1.35rem;">${e["cap_early"]:,.0f}</div>'
-            f'<div class="rsub">${e["cost_early"]:,.0f} a year &middot; {e["early"]:.1f} days ahead of need</div>'
-        )
+for col, (key, r) in zip(cols, ROUTES.items()):
+    res = results[key]
+    win = " route-win" if key == best else ""
+    if holding:
+        split = (f'<div class="rsub">${res["in_transit"]:,.0f} in transit &middot; '
+                 f'${res["buffer_held"]:,.0f} held as buffer</div>')
     else:
-        detail = (
-            f'<div class="unit">Capital in transit</div>'
-            f'<div class="big" style="font-size:1.35rem;">${e["cap_transit"]:,.0f}</div>'
-            f'<div class="rsub">{e["transit"]:.1f} days moving</div>'
-        )
+        split = '<div class="rsub">all of it in transit</div>'
     with col:
         st.markdown(
             f'<div class="route{win}">'
             f'<div class="rname">{r["name"]}</div>'
             f'<div class="rsub">{r["sub"]}</div>'
-            f'<div class="unit">Settles in</div>'
-            f'<div class="big">{r["days"]:.2g} <span style="font-size:0.95rem">days</span></div>'
-            f'<div class="rsub">{e["transit"]:.1f} days once documentation holds are counted</div>'
-            f'{detail}'
-            f'<div class="unit">Annual cost</div>'
-            f'<div class="big">${e["annual_cost"]:,.0f}</div>'
-            f'<div class="rsub">{e["held_per_year"]:.0f} of {per_month*12} payments held for documents</div>'
+            f'<div class="unit">Time to land</div>'
+            f'<div class="big">{r["days_typical"]:.2g} <span style="font-size:1rem">days</span></div>'
+            f'<div class="rsub">{r["days_best"]:.2g}-{r["days_worst"]:.2g} day range</div>'
+            f'<div class="unit">Capital tied up</div>'
+            f'<div class="big">${res["capital_tied"]:,.0f}</div>'
+            f'{split}'
+            f'<div class="unit">Annual cost of that capital</div>'
+            f'<div class="big">${res["annual_cost"]:,.0f}</div>'
+            f'<div class="rsub">{res["stalled"]:.0f} payments a year held for documentation</div>'
             f'</div>',
             unsafe_allow_html=True,
         )
 
 st.markdown("")
-c1, c2, c3 = st.columns(3)
-for col, (key, r) in zip([c1, c2, c3], routes.items()):
-    with col:
-        with st.expander(f"Where the {r['name'].lower()} timing comes from"):
-            st.markdown(f'<div class="src">{r["basis"]}</div>', unsafe_allow_html=True)
-
-# ---------------------------------------------------------------- planning
-
-if planning:
-    st.markdown("---")
-    st.markdown("### Waiting and planning are both costs")
-    cur = res[dearest]
-    p1, p2 = st.columns([1.15, 1])
-    with p1:
-        st.markdown(
-            f"Releasing **{lead_days:.1f} days** ahead means the money leaves the business before it is "
-            f"owed. On the slowest route settlement genuinely takes **{cur['transit']:.1f} days**, so "
-            f"**{cur['early']:.1f} days** of that is cover against a route you cannot predict.\\n\\n"
-            f"Both cost the same rate. In transit runs to **${cur['cost_transit']:,.0f}** a year, cover to "
-            f"**${cur['cost_early']:,.0f}**. The second only exists because the first is unreliable - a "
-            f"route that lands when it says it will needs far less of it."
-        )
-    with p2:
-        st.markdown("**Cover needed per route**")
-        for key, r in routes.items():
-            e = res[key]
-            st.markdown(
-                f'<div style="padding:0.45rem 0; border-bottom:1px solid #1E2836;"><b>{r["name"]}</b><br>'
-                f'<span class="rsub">{e["transit"]:.1f}d moving &middot; {e["early"]:.1f}d cover &middot; '
-                f'${e["annual_cost"]:,.0f}/yr</span></div>',
-                unsafe_allow_html=True,
-            )
+for key, r in ROUTES.items():
+    with st.expander(f"Where the {r['name'].lower()} numbers come from"):
+        st.markdown(f'<div class="src">{r["basis"]}</div>', unsafe_allow_html=True)
 
 # ---------------------------------------------------------------- compliance
 
@@ -246,17 +198,17 @@ with ca:
 
 with cb:
     st.markdown("**Payments held for documentation, per year**")
-    for key, r in routes.items():
+    for key, r in ROUTES.items():
         st.markdown(
             f'<div style="padding:0.45rem 0; border-bottom:1px solid #1E2836;">{r["name"]}<br>'
-            f'<span class="big" style="font-size:1.3rem;">{res[key]["held_per_year"]:.0f}</span> '
-            f'<span class="rsub">of {per_month*12} &middot; at {r["hold"]}%</span></div>',
+            f'<span class="big" style="font-size:1.35rem;">{results[key]["stalled"]:.0f}</span> '
+            f'<span class="rsub">of {per_month*12} payments</span></div>',
             unsafe_allow_html=True,
         )
     st.caption(
-        f"At {stall_cost_days} days added each, that is "
-        f"{res['local_dom']['held_per_year']*stall_cost_days:.0f} days of delay a year on the slowest route "
-        f"against {res['stablecoin']['held_per_year']*stall_cost_days:.0f} on the fastest."
+        f"At {stall_cost_days} days lost each, that's "
+        f"{results['local_dom']['stalled']*stall_cost_days:.0f} days of delay a year on the slowest route "
+        f"against {results['stablecoin']['stalled']*stall_cost_days:.0f} on the fastest."
     )
 
 # ---------------------------------------------------------------- method
@@ -264,19 +216,19 @@ with cb:
 st.markdown("---")
 with st.expander("How this is calculated"):
     st.markdown("""
-    expected settlement = route days + (hold rate x extra days when held)
-    capital in transit  = payment size x payments per month x (settlement days / 30)
-    capital released early = payment size x payments per month x (days ahead of settlement / 30)
-    annual cost         = capital tied up x your cost of capital
+**Capital tied up** is money in transit plus, where you hold one, the buffer kept against delay. Money in
+transit is your monthly volume scaled by how long each payment takes. The buffer is what you keep on hand
+because funds already sent aren't available yet - it scales with delay and reaches full size at three days,
+on the reasoning that a company holding a buffer sizes it for the worst case it expects.
 
-Capital tied up is an opportunity cost rather than a fee. It never appears on an invoice, which is why it
-usually goes unpriced.
+**Annual cost** prices that capital at the rate you set. It is an opportunity cost, not a fee: money
+sitting in transit is money not working.
 
-Route timings come from a primary interview with a serving treasury analyst at a Nigerian fintech, August
-2026: cross-currency settlement from a local domiciliary account at T+1 to T+3, a matched-currency
-offshore account landing same day within hours.
+**Stall rate** is the share of payments held for documentation. The gap between routes isn't about how
+strict compliance is - it's about whether the counterparty processing your payment understands local
+documentation or treats it as an exception.
 
-The documentation hold rates - 22% on a local domiciliary account, 8% offshore, 6% on a stablecoin rail -
-are modelling assumptions rather than published figures. Change them in the sidebar to whatever your own
-experience shows.
+**Timings** come from a primary interview with a serving treasury analyst at a Nigerian fintech, August
+2026: cross-currency settlement from a local domiciliary account at T+1 to T+3, a matched-currency offshore
+account landing same day within hours. Stall rates are modelling assumptions rather than published figures.
 """)
