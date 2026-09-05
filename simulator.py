@@ -1,5 +1,5 @@
 """
-Value Date - settlement route simulator.
+Layover - settlement route simulator.
 
 Models the working capital a company commits early because cross-border
 settlement takes time, plus the exposure created when payments are held for
@@ -11,7 +11,7 @@ a Nigerian fintech, August 2026. Every input is editable on the page.
 
 import streamlit as st
 
-st.set_page_config(page_title="Value Date", page_icon="◆", layout="wide")
+st.set_page_config(page_title="Layover", page_icon="◆", layout="wide")
 
 st.markdown("""
 <style>
