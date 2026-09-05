@@ -89,9 +89,8 @@ def build_deck(ctx):
     prs = Presentation()
     prs.slide_width, prs.slide_height = W, H
 
-    period = ctx["period_label"]
-    routes = ctx["routes"]
-    worst, best = ctx["worst"], ctx["best"]
+    cur, alt = ctx["current"], ctx["offered"]
+    cheaper = ctx["cheaper"]
 
     # ---- title
     s = prs.slides.add_slide(prs.slide_layouts[6])
@@ -99,91 +98,81 @@ def build_deck(ctx):
     _bar(s)
     _box(s, MARGIN, Emu(457200), Emu(5486400), Emu(274320), "LAYOVER", 10, GOLD, bold=True)
     _box(s, MARGIN, Emu(2377440), Emu(10972800), Emu(1645920),
-         ["What settlement time", "costs this business"], 48, CREAM, bold=True, font="Georgia")
+         ["What this transfer", "actually costs"], 48, CREAM, bold=True, font="Georgia")
     _box(s, MARGIN, Emu(4114800), Emu(10972800), Emu(365760),
-         f"Cross-border settlement  ·  {period} view", 14, GOLD)
+         f"{cur['name']} compared against {alt['name'].lower()}", 14, GOLD)
     _rule(s, MARGIN, Emu(4617720))
     _box(s, MARGIN, Emu(4754880), Emu(10972800), Emu(365760),
-         "The fee is visible. The days are not.", 13, MUTED)
+         "The fee is visible. The exchange rate margin is not.", 13, MUTED)
     _box(s, Emu(8229600), Emu(6400800), Emu(3474720), Emu(274320),
          date.today().strftime("%-d %B %Y"), 9, MUTED, align=PP_ALIGN.RIGHT)
 
-    # ---- 01 the position
-    _section(prs, "01", "THE POSITION", "THE POSITION", [
-        f"This business moves {_money(ctx['volume'])} across borders over a {period.lower()} period, "
-        f"in payments of about {_money(ctx['amount'])} each.",
+    # ---- 01 the numbers
+    _section(prs, "01", "THE NUMBERS", "WHAT THE NUMBERS SHOW", [
+        f"Payment size {_money(ctx['amount'])}, {ctx['per_month']} times a month — "
+        f"{ctx['per_year']} transfers a year.",
 
-        f"Settling through {routes[worst]['name'].lower()} leaves {_money(routes[worst]['capital'])} of "
-        f"working capital tied up at any moment — money in transit, plus the buffer held because that "
-        f"money is not available while it moves.",
+        f"{cur['name']}: fee {_money(cur['fee'])}, exchange rate margin {_money(cur['spread'])} "
+        f"({cur['spread_pct']:.2f}% of the payment). Total {_money(cur['total'])} per transfer, "
+        f"{_money(cur['annual'])} a year. Settles in {cur['days']:.2g} days.",
 
-        f"At a {ctx['rate']}% cost of capital, carrying that position costs "
-        f"{_money(routes[worst]['cost'])} over the same period.",
+        f"{alt['name']}: fee {_money(alt['fee'])}, spread {_money(alt['spread'])} "
+        f"({alt['spread_pct']:.2f}%). Total {_money(alt['total'])} per transfer, "
+        f"{_money(alt['annual'])} a year. Settles in {alt['days']:.2g} days.",
 
-        f"On the fastest route the same payment flow ties up {_money(routes[best]['capital'])} and costs "
-        f"{_money(routes[best]['cost'])} — a difference of {_money(ctx['saving'])}, or "
-        f"{ctx['saving_pct']:.0f}% of the current figure.",
+        f"Difference across a year: {_money(abs(ctx['diff']))}, "
+        f"{abs(ctx['diff_pct']):.0f}% {'lower' if cheaper else 'higher'}.",
     ])
 
-    # ---- 02 route comparison
-    _section(prs, "02", "ROUTE COMPARISON", "ROUTE COMPARISON",
-             [f"{r['name']} — settles in {r['days']:.2g} days ({r['range']}). "
-              f"Capital tied up {_money(r['capital'])}. Cost {_money(r['cost'])}. "
-              f"{r['stalled']:.0f} payments held for documentation."
-              for r in routes.values()] + [
-                 "Same payment, three routes. The difference is not the fee — it is how long the money is "
-                 "unavailable, and how much has to be held on hand because of it."
-             ])
+    # ---- 02 implication
+    _section(prs, "02", "IMPLICATION", "WHAT IT MEANS", [
+        f"The fee on the current route is {_money(cur['fee'])}. The exchange rate margin is "
+        f"{_money(cur['spread'])} — a rate of {cur['rate']:,.0f} against a market rate of "
+        f"{cur['market']:,.0f}.",
 
-    # ---- 03 why time is the cost
-    _section(prs, "03", "WHY TIME IS THE COST", "WHY TIME IS THE COST", [
-        "Fees appear on an invoice and get negotiated. Days do not appear anywhere.",
+        "The margin does not appear on a statement. It is priced into the rate, which is why most finance "
+        "teams know the fee precisely and have never seen the margin written down.",
 
-        f"Money in transit is money not working. Across a {period.lower()} period, the days a payment "
-        f"spends settling are days that capital earns nothing and cannot be deployed.",
-
-        "The buffer compounds it. A business that cannot rely on a payment landing keeps additional "
-        "working capital available, and that reserve exists purely because settlement is slow.",
-
-        "Neither figure is a fee, which is why neither is usually priced. Both are real.",
+        f"Across {ctx['per_year']} transfers a year, the margin alone accounts for "
+        f"{_money(cur['spread'] * ctx['per_year'])}.",
+    ] + ([f"Capital in transit adds {_money(cur['carry'])} a year at {ctx['rate_pct']}% cost of capital."]
+         if ctx["show_capital"] else []) + [
+        f"Settlement time differs by {abs(cur['days'] - alt['days']):.2g} days, which changes when funds "
+        f"are available at the receiving end rather than what the transfer costs.",
     ])
 
-    # ---- 04 compliance
-    _section(prs, "04", "THE COMPLIANCE COST", "THE PART THAT ISN'T ABOUT PRICE", [
-        "\"The partners processing these payments mostly aren't local entities. They want the invoice, "
-        "the company registration, the payer's details, the source of funds. And most of the time our "
-        "people here don't have all of it.\"",
+    # ---- 03 recommendation
+    _section(prs, "03", "RECOMMENDATION", "WHAT TO DO WITH THIS", [
+        "Ask for the market rate alongside every quote. A rate quoted without a reference point cannot be "
+        "assessed, and the margin is usually the larger of the two costs.",
 
-        "— Treasury analyst, Nigerian fintech. Condensed from a primary interview, August 2026.",
+        f"Compare total cost per transfer rather than fees. On these figures the fee is "
+        f"{100*cur['fee']/max(cur['total'],1):.0f}% of what the transfer actually costs.",
 
-        "A payment held for documentation does not get more expensive. It does not happen. That is an "
-        "eligibility failure rather than a pricing one, and no rate negotiation fixes it.",
+        "Weigh how pricing is set, not only what it is. Published pricing holds across a quarter end and "
+        "a public holiday; a negotiated rate moves with the relationship and the day.",
 
-        "Where verification is not already held, the request arrives at payment time — the moment the "
-        "money is meant to move.",
+        "Establish when verification happens. Documentation held once at onboarding is a condition of "
+        "access. Documentation requested at payment time is a delay on every transfer.",
 
-        "Under a regulated counterparty, verification happens once at onboarding: due diligence, company "
-        "registration, beneficial ownership. Each payment then runs against a business already verified, "
-        "so compliance becomes a condition of access rather than a delay on every transfer.",
-
-        f"On the current route, {routes[worst]['stalled']:.0f} of {ctx['payment_count']:.0f} payments are "
-        f"held for documentation over this period.",
+        "Regulated settlement infrastructure is a different proposition from a cheaper transfer. Local "
+        "licensing, published pricing, continuous settlement and verification held in advance are "
+        "structural, and they hold whether or not a given transfer prices lower.",
     ])
 
-    # ---- 05 inputs
-    _section(prs, "05", "INPUTS USED", "INPUTS USED", [
-        f"Typical payment size: {_money(ctx['amount'])}",
+    # ---- 04 inputs
+    _section(prs, "04", "INPUTS USED", "INPUTS USED", [
+        f"Payment size: {_money(ctx['amount'])}",
         f"Payments per month: {ctx['per_month']}",
-        f"Cost of capital: {ctx['rate']}% a year",
-        f"Buffer held against delay: {ctx['buffer_pct']}%" if ctx["holding"]
-        else "Approach: payments sent when due, no buffer held",
-        f"Days lost when a payment stalls: {ctx['stall_days']}",
-        f"Reporting period: {period}",
+        f"Current route: {cur['name']} — fee {_money(cur['fee'])}, rate {cur['rate']:,.0f} against "
+        f"market {cur['market']:,.0f}, {cur['days']:.2g} days",
+        f"Offered route: {alt['name']} — fee {_money(alt['fee'])}, spread {alt['spread_pct']:.2f}%, "
+        f"{alt['days']:.2g} days",
+        f"Cost of capital: {ctx['rate_pct']}% a year" if ctx["show_capital"]
+        else "Capital in transit: not priced",
         "",
-        "Route timings come from a primary interview with a serving treasury analyst at a Nigerian "
-        "fintech, August 2026. Documentation hold rates are modelling assumptions and are adjustable. "
-        "Foreign exchange spread is deliberately not modelled — spread is negotiated and varies by "
-        "relationship, so any figure here would be invented. This prices time, which is observable.",
+        "Both routes are entered rather than assumed. Settlement timings reference a primary interview "
+        "with a serving treasury analyst at a Nigerian fintech, August 2026.",
     ])
 
     buf = io.BytesIO()
