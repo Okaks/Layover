@@ -89,8 +89,9 @@ def build_deck(ctx):
     prs = Presentation()
     prs.slide_width, prs.slide_height = W, H
 
-    cur, alt = ctx["current"], ctx["offered"]
-    cheaper = ctx["cheaper"]
+    cur, best = ctx["current"], ctx["best"]
+    rts, sym = ctx["routes"], ctx["symbol"]
+    saves = ctx["diff"] > 0
 
     # ---- title
     s = prs.slides.add_slide(prs.slide_layouts[6])
@@ -100,7 +101,7 @@ def build_deck(ctx):
     _box(s, MARGIN, Emu(2377440), Emu(10972800), Emu(1645920),
          ["What this transfer", "actually costs"], 48, CREAM, bold=True, font="Georgia")
     _box(s, MARGIN, Emu(4114800), Emu(10972800), Emu(365760),
-         f"{cur['name']} compared against {alt['name'].lower()}", 14, GOLD)
+         f"{len(rts)} routes compared on total cost per transfer", 14, GOLD)
     _rule(s, MARGIN, Emu(4617720))
     _box(s, MARGIN, Emu(4754880), Emu(10972800), Emu(365760),
          "The fee is visible. The exchange rate margin is not.", 13, MUTED)
@@ -108,45 +109,40 @@ def build_deck(ctx):
          date.today().strftime("%-d %B %Y"), 9, MUTED, align=PP_ALIGN.RIGHT)
 
     # ---- 01 the numbers
-    _section(prs, "01", "THE NUMBERS", "WHAT THE NUMBERS SHOW", [
-        f"Payment size {_money(ctx['amount'])}, {ctx['per_month']} times a month — "
-        f"{ctx['per_year']} transfers a year.",
-
-        f"{cur['name']}: fee {_money(cur['fee'])}, exchange rate margin {_money(cur['spread'])} "
-        f"({cur['spread_pct']:.2f}% of the payment). Total {_money(cur['total'])} per transfer, "
-        f"{_money(cur['annual'])} a year. Settles in {cur['days']:.2g} days.",
-
-        f"{alt['name']}: fee {_money(alt['fee'])}, spread {_money(alt['spread'])} "
-        f"({alt['spread_pct']:.2f}%). Total {_money(alt['total'])} per transfer, "
-        f"{_money(alt['annual'])} a year. Settles in {alt['days']:.2g} days.",
-
-        f"Difference across a year: {_money(abs(ctx['diff']))}, "
-        f"{abs(ctx['diff_pct']):.0f}% {'lower' if cheaper else 'higher'}.",
-    ])
+    _section(prs, "01", "THE NUMBERS", "WHAT THE NUMBERS SHOW",
+             [f"Payment size {_money(ctx['amount'])}, {ctx['per_month']} times a month — "
+              f"{ctx['per_year']} transfers a year. Market rate {sym}{ctx['market']:,.0f}."] +
+             [f"{r['name']} — fee {_money(r['fee'])} ({r['fee_pct']:.2f}%), rate {sym}{r['rate']:,.0f} "
+              f"giving a margin of {_money(r['spread'])} ({r['spread_pct']:.2f}%). "
+              f"Total {_money(r['total'])} per transfer, {_money(r['annual'])} a year. "
+              f"Settles in {r['days']:.2g} days."
+              for r in rts] +
+             [f"Cheapest: {best['name']} at {_money(best['total'])} per transfer."])
 
     # ---- 02 implication
     _section(prs, "02", "IMPLICATION", "WHAT IT MEANS", [
-        f"The fee on the current route is {_money(cur['fee'])}. The exchange rate margin is "
-        f"{_money(cur['spread'])} — a rate of {cur['rate']:,.0f} against a market rate of "
-        f"{cur['market']:,.0f}.",
+        f"On the current route the fee is {_money(cur['fee'])} and the exchange rate margin is "
+        f"{_money(cur['spread'])} — a rate of {sym}{cur['rate']:,.0f} against {sym}{ctx['market']:,.0f}.",
 
         "The margin does not appear on a statement. It is priced into the rate, which is why most finance "
         "teams know the fee precisely and have never seen the margin written down.",
 
-        f"Across {ctx['per_year']} transfers a year, the margin alone accounts for "
+        f"Across {ctx['per_year']} transfers a year the margin alone accounts for "
         f"{_money(cur['spread'] * ctx['per_year'])}.",
     ] + ([f"Capital in transit adds {_money(cur['carry'])} a year at {ctx['rate_pct']}% cost of capital."]
-         if ctx["show_capital"] else []) + [
-        f"Settlement time differs by {abs(cur['days'] - alt['days']):.2g} days, which changes when funds "
-        f"are available at the receiving end rather than what the transfer costs.",
-    ])
+         if ctx["show_capital"] else []) + (
+        [f"Moving to {best['name'].lower()} would change the annual cost by "
+         f"{_money(abs(ctx['diff']))}, or {abs(ctx['diff_pct']):.0f}%."] if saves else
+        ["The current route is already the cheapest of those compared. The remaining differences are "
+         "settlement time and how pricing is set."]),
+    )
 
     # ---- 03 recommendation
     _section(prs, "03", "RECOMMENDATION", "WHAT TO DO WITH THIS", [
-        "Ask for the market rate alongside every quote. A rate quoted without a reference point cannot be "
+        "Ask for the market rate alongside every quote. A rate given without a reference point cannot be "
         "assessed, and the margin is usually the larger of the two costs.",
 
-        f"Compare total cost per transfer rather than fees. On these figures the fee is "
+        f"Compare total cost rather than fees. On the current route the fee is "
         f"{100*cur['fee']/max(cur['total'],1):.0f}% of what the transfer actually costs.",
 
         "Weigh how pricing is set, not only what it is. Published pricing holds across a quarter end and "
@@ -161,19 +157,16 @@ def build_deck(ctx):
     ])
 
     # ---- 04 inputs
-    _section(prs, "04", "INPUTS USED", "INPUTS USED", [
-        f"Payment size: {_money(ctx['amount'])}",
-        f"Payments per month: {ctx['per_month']}",
-        f"Current route: {cur['name']} — fee {_money(cur['fee'])}, rate {cur['rate']:,.0f} against "
-        f"market {cur['market']:,.0f}, {cur['days']:.2g} days",
-        f"Offered route: {alt['name']} — fee {_money(alt['fee'])}, spread {alt['spread_pct']:.2f}%, "
-        f"{alt['days']:.2g} days",
-        f"Cost of capital: {ctx['rate_pct']}% a year" if ctx["show_capital"]
-        else "Capital in transit: not priced",
-        "",
-        "Both routes are entered rather than assumed. Settlement timings reference a primary interview "
-        "with a serving treasury analyst at a Nigerian fintech, August 2026.",
-    ])
+    _section(prs, "04", "INPUTS USED", "INPUTS USED",
+             [f"Payment size: {_money(ctx['amount'])}",
+              f"Payments per month: {ctx['per_month']}",
+              f"Market rate: {sym}{ctx['market']:,.0f} per USD"] +
+             [f"{r['name']}: fee {r['fee_pct']:.2f}%, rate {sym}{r['rate']:,.0f}, {r['days']:.2g} days"
+              for r in rts] +
+             [f"Cost of capital: {ctx['rate_pct']}% a year" if ctx["show_capital"]
+              else "Capital in transit: not priced", "",
+              "Every route is entered rather than assumed. Settlement timings reference a primary "
+              "interview with a serving treasury analyst at a Nigerian fintech, August 2026."])
 
     buf = io.BytesIO()
     prs.save(buf)
