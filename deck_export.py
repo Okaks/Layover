@@ -81,7 +81,10 @@ def _section(prs, number, label, heading, paragraphs):
 
 
 def _money(v):
-    return f"${v:,.0f}"
+    try:
+        return f"${float(v):,.0f}"
+    except Exception:
+        return "-"
 
 
 def build_deck(ctx):
@@ -89,9 +92,11 @@ def build_deck(ctx):
     prs = Presentation()
     prs.slide_width, prs.slide_height = W, H
 
-    cur, best = ctx["current"], ctx["best"]
-    rts, sym = ctx["routes"], ctx["symbol"]
-    saves = ctx["diff"] > 0
+    rts = ctx.get("routes") or []
+    sym = ctx.get("symbol", "$")
+    cur = ctx.get("current") or (rts[0] if rts else {})
+    best = ctx.get("best") or (min(rts, key=lambda r: r.get("annual", 0)) if rts else cur)
+    saves = ctx.get("diff", 0) > 0
 
     # ---- title
     s = prs.slides.add_slide(prs.slide_layouts[6])
@@ -110,29 +115,29 @@ def build_deck(ctx):
 
     # ---- 01 the numbers
     _section(prs, "01", "THE NUMBERS", "WHAT THE NUMBERS SHOW",
-             [f"Payment size {_money(ctx['amount'])}, {ctx['per_month']} times a month — "
-              f"{ctx['per_year']} transfers a year. Market rate {sym}{ctx['market']:,.0f}."] +
-             [f"{r['name']} — fee {_money(r['fee'])} ({r['fee_pct']:.2f}%), rate {sym}{r['rate']:,.0f} "
-              f"giving a margin of {_money(r['spread'])} ({r['spread_pct']:.2f}%). "
-              f"Total {_money(r['total'])} per transfer, {_money(r['annual'])} a year. "
-              f"Settles in {r['days']:.2g} days."
+             [f"Payment size {_money(ctx.get("amount", 0))}, {ctx.get("per_month", 0)} times a month — "
+              f"{ctx.get("per_year", 0)} transfers a year. Market rate {sym}{ctx.get("market", 0):,.0f}."] +
+             [f"{r.get('name', '-')} — fee {_money(r.get('fee', 0))} ({r.get('fee_pct', 0):.2f}%), rate {sym}{r.get('rate', 0):,.0f} "
+              f"giving a margin of {_money(r.get('spread', 0))} ({r.get('spread_pct', 0):.2f}%). "
+              f"Total {_money(r.get('total', 0))} per transfer, {_money(r.get('annual', 0))} a year. "
+              f"Settles in {r.get('days', 0):.2g} days."
               for r in rts] +
-             [f"Cheapest: {best['name']} at {_money(best['total'])} per transfer."])
+             [f"Cheapest: {best.get('name', '-')} at {_money(best.get('total', 0))} per transfer."])
 
     # ---- 02 implication
     _section(prs, "02", "IMPLICATION", "WHAT IT MEANS", [
-        f"On the current route the fee is {_money(cur['fee'])} and the exchange rate margin is "
-        f"{_money(cur['spread'])} — a rate of {sym}{cur['rate']:,.0f} against {sym}{ctx['market']:,.0f}.",
+        f"On the current route the fee is {_money(cur.get('fee', 0))} and the exchange rate margin is "
+        f"{_money(cur.get('spread', 0))} — a rate of {sym}{cur.get('rate', 0):,.0f} against {sym}{ctx.get("market", 0):,.0f}.",
 
         "The margin does not appear on a statement. It is priced into the rate, which is why most finance "
         "teams know the fee precisely and have never seen the margin written down.",
 
-        f"Across {ctx['per_year']} transfers a year the margin alone accounts for "
-        f"{_money(cur['spread'] * ctx['per_year'])}.",
-    ] + ([f"Capital in transit adds {_money(cur['carry'])} a year at {ctx['rate_pct']}% cost of capital."]
-         if ctx["show_capital"] else []) + (
-        [f"Moving to {best['name'].lower()} would change the annual cost by "
-         f"{_money(abs(ctx['diff']))}, or {abs(ctx['diff_pct']):.0f}%."] if saves else
+        f"Across {ctx.get("per_year", 0)} transfers a year the margin alone accounts for "
+        f"{_money(cur.get('spread', 0) * ctx.get("per_year", 0))}.",
+    ] + ([f"Capital in transit adds {_money(cur.get('carry', 0))} a year at {ctx.get("rate_pct", 0)}% cost of capital."]
+         if ctx.get("show_capital") else []) + (
+        [f"Moving to {best.get('name', '-').lower()} would change the annual cost by "
+         f"{_money(abs(ctx.get("diff", 0)))}, or {abs(ctx.get("diff_pct", 0)):.0f}%."] if saves else
         ["The current route is already the cheapest of those compared. The remaining differences are "
          "settlement time and how pricing is set."]),
     )
@@ -143,7 +148,7 @@ def build_deck(ctx):
         "assessed, and the margin is usually the larger of the two costs.",
 
         f"Compare total cost rather than fees. On the current route the fee is "
-        f"{100*cur['fee']/max(cur['total'],1):.0f}% of what the transfer actually costs.",
+        f"{100*cur.get('fee', 0)/max(cur.get('total', 0),1):.0f}% of what the transfer actually costs.",
 
         "Weigh how pricing is set, not only what it is. Published pricing holds across a quarter end and "
         "a public holiday; a negotiated rate moves with the relationship and the day.",
@@ -158,12 +163,12 @@ def build_deck(ctx):
 
     # ---- 04 inputs
     _section(prs, "04", "INPUTS USED", "INPUTS USED",
-             [f"Payment size: {_money(ctx['amount'])}",
-              f"Payments per month: {ctx['per_month']}",
-              f"Market rate: {sym}{ctx['market']:,.0f} per USD"] +
-             [f"{r['name']}: fee {r['fee_pct']:.2f}%, rate {sym}{r['rate']:,.0f}, {r['days']:.2g} days"
+             [f"Payment size: {_money(ctx.get("amount", 0))}",
+              f"Payments per month: {ctx.get("per_month", 0)}",
+              f"Market rate: {sym}{ctx.get("market", 0):,.0f} per USD"] +
+             [f"{r.get('name', '-')}: fee {r.get('fee_pct', 0):.2f}%, rate {sym}{r.get('rate', 0):,.0f}, {r.get('days', 0):.2g} days"
               for r in rts] +
-             [f"Cost of capital: {ctx['rate_pct']}% a year" if ctx["show_capital"]
+             [f"Cost of capital: {ctx.get("rate_pct", 0)}% a year" if ctx.get("show_capital")
               else "Capital in transit: not priced", "",
               "Every route is entered rather than assumed. Settlement timings reference a primary "
               "interview with a serving treasury analyst at a Nigerian fintech, August 2026."])

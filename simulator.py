@@ -45,8 +45,8 @@ CURRENCIES = {
 }
 
 DEFAULTS = [
-    {"name": "Bank transfer", "fee_pct": 0.5, "rate": 1580.0, "days": 2.0},
-    {"name": "FX agent", "fee_pct": 0.0, "rate": 1570.0, "days": 1.0},
+    {"name": "Local domiciliary account", "fee_pct": 0.5, "rate": 1580.0, "days": 2.0},
+    {"name": "Offshore account, matched currency", "fee_pct": 0.3, "rate": 1570.0, "days": 0.3},
     {"name": "Stablecoin settlement rail", "fee_pct": 0.5, "rate": 1565.0, "days": 0.15},
 ]
 
@@ -215,13 +215,18 @@ with ex1:
         "current": current, "best": best, "diff": diff, "diff_pct": diff_pct,
         "show_capital": show_capital, "rate_pct": rate_pct,
     }
-    st.download_button(
-        "Download this as a deck",
-        data=deck_export.build_deck(ctx),
-        file_name="layover-comparison.pptx",
-        mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        type="primary",
-    )
+    try:
+        deck_bytes = deck_export.build_deck(ctx)
+        st.download_button(
+            "Download this as a deck",
+            data=deck_bytes,
+            file_name="layover-comparison.pptx",
+            mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            type="primary",
+        )
+    except Exception as exc:
+        st.button("Download this as a deck", disabled=True)
+        st.caption(f"Deck export unavailable: {exc}")
 with ex2:
     st.caption("Four slides built from the figures on this page, including the inputs used.")
 
