@@ -39,15 +39,27 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# symbol, indicative market rate per USD. The rate is only a starting point -
+# it is editable, and a user should enter the actual rate on the day.
 CURRENCIES = {
-    "USD $": ("$", 1.0), "NGN ₦": ("₦", 1.0), "KES KSh": ("KSh", 1.0),
-    "GHS ₵": ("₵", 1.0), "ZAR R": ("R", 1.0), "EUR €": ("€", 1.0), "GBP £": ("£", 1.0),
+    "NGN ₦": ("₦", 1550.0),
+    "KES KSh": ("KSh", 129.0),
+    "GHS ₵": ("₵", 12.0),
+    "ZAR R": ("R", 18.0),
+    "EGP £E": ("£E", 48.0),
+    "TZS TSh": ("TSh", 2600.0),
+    "UGX USh": ("USh", 3700.0),
+    "XOF CFA": ("CFA", 600.0),
+    "EUR €": ("€", 0.92),
+    "GBP £": ("£", 0.79),
 }
 
+# Route defaults. "premium" is how far above the market rate that route
+# typically prices, as a multiplier - editable per route.
 DEFAULTS = [
-    {"name": "Local domiciliary account", "fee_pct": 0.5, "rate": 1580.0, "days": 2.0},
-    {"name": "Offshore account, matched currency", "fee_pct": 0.3, "rate": 1570.0, "days": 0.3},
-    {"name": "Stablecoin settlement rail", "fee_pct": 0.5, "rate": 1565.0, "days": 0.15},
+    {"name": "Local domiciliary account", "fee_pct": 0.5, "premium": 1.019, "days": 2.0},
+    {"name": "Offshore account, matched currency", "fee_pct": 0.3, "premium": 1.013, "days": 0.3},
+    {"name": "Stablecoin settlement rail", "fee_pct": 0.5, "premium": 1.010, "days": 0.15},
 ]
 
 st.title("What this transfer actually costs")
@@ -61,15 +73,19 @@ st.markdown(
 # ---------------------------------------------------------------- inputs
 
 st.sidebar.markdown("### The payment")
-cur_label = st.sidebar.selectbox("Currency you pay from", list(CURRENCIES.keys()), index=1)
-SYM = CURRENCIES[cur_label][0]
+cur_label = st.sidebar.selectbox("Currency you pay from", list(CURRENCIES.keys()), index=0)
+SYM, DEFAULT_RATE = CURRENCIES[cur_label]
+CKEY = cur_label.split()[0]
 
 amount = st.sidebar.number_input("Payment size (USD)", 1_000, 50_000_000, 260_000, 10_000,
                                  help="A single transfer, in the currency being bought.")
 per_month = st.sidebar.number_input("Payments per month", 1, 500, 4)
+step = 1.0 if DEFAULT_RATE >= 50 else 0.01
 mkt_rate = st.sidebar.number_input(
-    f"Market rate ({SYM} per USD)", 0.0, 1_000_000.0, 1550.0, 1.0,
-    help="The mid-market or official rate on the day. Every route's margin is measured against this.",
+    f"Market rate ({SYM} per USD)", 0.0, 1_000_000.0, DEFAULT_RATE, step,
+    key=f"mkt_{CKEY}",
+    help="The mid-market or official rate on the day. Every route's margin is measured against this. "
+         "The figure shown is indicative - replace it with the actual rate.",
 )
 
 st.sidebar.markdown("---")
@@ -82,7 +98,7 @@ for i, d in enumerate(DEFAULTS):
         name = st.text_input("Name", d["name"], key=f"n{i}")
         fee_pct = st.number_input("Fee (%)", 0.0, 10.0, d["fee_pct"], 0.05, key=f"f{i}")
         rate = st.number_input(f"Rate you get ({SYM} per USD)", 0.0, 1_000_000.0,
-                               d["rate"], 1.0, key=f"r{i}")
+                               round(mkt_rate * d["premium"], 2), step, key=f"r{i}_{CKEY}")
         days = st.number_input("Days to land", 0.0, 30.0, d["days"], 0.05, key=f"d{i}")
         active = st.checkbox("Include", value=True, key=f"a{i}")
     if active:
