@@ -181,11 +181,10 @@ def build_deck(ctx):
     _section(prs, "05" if ctx.get("alt") else "04", "INPUTS USED", "INPUTS USED",
              [f"Payment size: {_money(ctx.get('amount', 0))}",
               f"Payments per month: {ctx.get('per_month', 0)}",
-              f"Market rate: {sym}{ctx.get('market', 0):,.0f} per USD",
-              f"Balance at start of month: {_money(ctx.get('opening', 0))}"] +
+              f"Market rate: {sym}{ctx.get('market', 0):,.0f} per USD"] +
              [f"{r.get('name', '-')}: fee {r.get('fee_pct', 0):.2f}%, rate {sym}{r.get('rate', 0):,.0f}, "
               f"{r.get('days', 0):.2g} days, ramp {r.get('on_ramp', 0):.2f}% in and {r.get('off_ramp', 0):.2f}% out, "
-              f"{_money(r.get('prefund', 0))} held in advance"
+              f"{_money(r.get('prefund', 0))} held in advance ({r.get('prefund_days', 0):g} days, scenario assumption)"
               for r in rts] +
              [f"Cost of capital: {ctx.get('rate_pct', 0)}% a year" if ctx.get("show_capital")
               else "Cash in transit and held in advance: not priced", "",
