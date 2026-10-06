@@ -115,26 +115,27 @@ def build_deck(ctx):
 
     # ---- 01 the numbers
     _section(prs, "01", "THE NUMBERS", "WHAT THE NUMBERS SHOW",
-             [f"Payment size {_money(ctx.get("amount", 0))}, {ctx.get("per_month", 0)} times a month — "
-              f"{ctx.get("per_year", 0)} transfers a year. Market rate {sym}{ctx.get("market", 0):,.0f}."] +
-             [f"{r.get('name', '-')} — fee {_money(r.get('fee', 0))} ({r.get('fee_pct', 0):.2f}%), rate {sym}{r.get('rate', 0):,.0f} "
-              f"giving a margin of {_money(r.get('spread', 0))} ({r.get('spread_pct', 0):.2f}%). "
+             [f"Payment size {_money(ctx.get('amount', 0))}, {ctx.get('per_month', 0)} times a month, "
+              f"{ctx.get('per_year', 0)} transfers a year. Market rate {sym}{ctx.get('market', 0):,.0f}."] +
+             [f"{r.get('name', '-')}: fee {_money(r.get('fee', 0))} ({r.get('fee_pct', 0):.2f}%), rate {sym}{r.get('rate', 0):,.0f} "
+              f"giving a margin of {_money(r.get('spread', 0))} ({r.get('spread_pct', 0):.2f}%), "
+              f"on/off-ramp {_money(r.get('ramp', 0))}. "
               f"Total {_money(r.get('total', 0))} per transfer, {_money(r.get('annual', 0))} a year. "
-              f"Settles in {r.get('days', 0):.2g} days."
+              f"Settles in {r.get('days', 0):.2g} days, {_money(r.get('prefund', 0))} held in advance."
               for r in rts] +
              [f"Cheapest: {best.get('name', '-')} at {_money(best.get('total', 0))} per transfer."])
 
     # ---- 02 implication
     _section(prs, "02", "IMPLICATION", "WHAT IT MEANS", [
         f"On the current route the fee is {_money(cur.get('fee', 0))} and the exchange rate margin is "
-        f"{_money(cur.get('spread', 0))} — a rate of {sym}{cur.get('rate', 0):,.0f} against {sym}{ctx.get("market", 0):,.0f}.",
+        f"{_money(cur.get('spread', 0))}: a rate of {sym}{cur.get('rate', 0):,.0f} against {sym}{ctx.get("market", 0):,.0f}.",
 
         "The margin does not appear on a statement. It is priced into the rate, which is why most finance "
         "teams know the fee precisely and have never seen the margin written down.",
 
         f"Across {ctx.get("per_year", 0)} transfers a year the margin alone accounts for "
         f"{_money(cur.get('spread', 0) * ctx.get("per_year", 0))}.",
-    ] + ([f"Capital in transit adds {_money(cur.get('carry', 0))} a year at {ctx.get("rate_pct", 0)}% cost of capital."]
+    ] + ([f"Cash in transit and held in advance adds {_money(cur.get('carry', 0))} a year at {ctx.get('rate_pct', 0)}% cost of capital."]
          if ctx.get("show_capital") else []) + (
         [f"Moving to {best.get('name', '-').lower()} would change the annual cost by "
          f"{_money(abs(ctx.get("diff", 0)))}, or {abs(ctx.get("diff_pct", 0)):.0f}%."] if saves else
@@ -142,8 +143,23 @@ def build_deck(ctx):
          "settlement time and how pricing is set."]),
     )
 
-    # ---- 03 recommendation
-    _section(prs, "03", "RECOMMENDATION", "WHAT TO DO WITH THIS", [
+    # ---- bridge
+    alt_r = ctx.get("alt")
+    if alt_r:
+        names = [("Fees", "m_fee"), ("Exchange rate margin", "m_fx"), ("On/off-ramp", "m_ramp"),
+                 ("Settlement time", "m_transit"), ("Held in advance", "m_prefund")]
+        moves = sorted(((n, alt_r.get(k, 0) - cur.get(k, 0)) for n, k in names),
+                       key=lambda m: abs(m[1]), reverse=True)
+        gain = alt_r.get("closing", 0) - cur.get("closing", 0)
+        _section(prs, "03", "BEFORE AND AFTER", "WHERE THE DIFFERENCE COMES FROM",
+                 [f"Monthly cost on {cur.get('name', '-')}: {_money(cur.get('m_cost', 0))}."] +
+                 [f"{n}: " + ("$0" if round(v) == 0 else f"{'+' if v > 0 else '-'}{_money(abs(v))}") for n, v in moves] +
+                 [f"Monthly cost on {alt_r.get('name', '-')}: {_money(alt_r.get('m_cost', 0))}.",
+                  f"Closing position moves from {_money(cur.get('closing', 0))} to "
+                  f"{_money(alt_r.get('closing', 0))}, {'+' if gain >= 0 else '-'}{_money(abs(gain))} a month."])
+
+    # ---- 04 recommendation
+    _section(prs, "04" if ctx.get("alt") else "03", "RECOMMENDATION", "WHAT TO DO WITH THIS", [
         "Ask for the market rate alongside every quote. A rate given without a reference point cannot be "
         "assessed, and the margin is usually the larger of the two costs.",
 
@@ -161,15 +177,18 @@ def build_deck(ctx):
         "structural, and they hold whether or not a given transfer prices lower.",
     ])
 
-    # ---- 04 inputs
-    _section(prs, "04", "INPUTS USED", "INPUTS USED",
-             [f"Payment size: {_money(ctx.get("amount", 0))}",
-              f"Payments per month: {ctx.get("per_month", 0)}",
-              f"Market rate: {sym}{ctx.get("market", 0):,.0f} per USD"] +
-             [f"{r.get('name', '-')}: fee {r.get('fee_pct', 0):.2f}%, rate {sym}{r.get('rate', 0):,.0f}, {r.get('days', 0):.2g} days"
+    # ---- inputs
+    _section(prs, "05" if ctx.get("alt") else "04", "INPUTS USED", "INPUTS USED",
+             [f"Payment size: {_money(ctx.get('amount', 0))}",
+              f"Payments per month: {ctx.get('per_month', 0)}",
+              f"Market rate: {sym}{ctx.get('market', 0):,.0f} per USD",
+              f"Balance at start of month: {_money(ctx.get('opening', 0))}"] +
+             [f"{r.get('name', '-')}: fee {r.get('fee_pct', 0):.2f}%, rate {sym}{r.get('rate', 0):,.0f}, "
+              f"{r.get('days', 0):.2g} days, ramp {r.get('on_ramp', 0):.2f}% in and {r.get('off_ramp', 0):.2f}% out, "
+              f"{_money(r.get('prefund', 0))} held in advance"
               for r in rts] +
-             [f"Cost of capital: {ctx.get("rate_pct", 0)}% a year" if ctx.get("show_capital")
-              else "Capital in transit: not priced", "",
+             [f"Cost of capital: {ctx.get('rate_pct', 0)}% a year" if ctx.get("show_capital")
+              else "Cash in transit and held in advance: not priced", "",
               "Every route is entered rather than assumed. Settlement timings reference a primary "
               "interview with a serving treasury analyst at a Nigerian fintech, August 2026."])
 
