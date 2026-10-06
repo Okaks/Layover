@@ -18,40 +18,53 @@ st.set_page_config(page_title="Layover", page_icon="◆", layout="wide")
 
 st.markdown("""
 <style>
-  .block-container {padding-top: 2.2rem; max-width: 1300px;}
-  h1, h2, h3 {letter-spacing: -0.015em;}
-  .lede {color:#8FA3BF; font-size:0.95rem; line-height:1.6; max-width:72ch;}
-  div[data-testid="column"] {display:flex;}
-  div[data-testid="column"] > div {width:100%;}
-  .card {border:1px solid #1E2836; border-radius:4px; padding:1.05rem 1.15rem;
-         height:100%; display:flex; flex-direction:column;}
+  .stApp, .stApp *:not([data-testid="stIconMaterial"]) {
+    font-family: "Times New Roman", Times, serif !important;}
+  .block-container {padding-top: 2.2rem; max-width: 1240px;}
+  h1 {font-size: 2.2rem !important; font-weight: 700; letter-spacing: 0;}
+  .lede {color:#8FA3BF; font-size:1rem; line-height:1.55; max-width:72ch;}
+  .card {border:1px solid #1E2836; border-radius:4px; padding:1rem 1.1rem;
+         font-variant-numeric: tabular-nums lining-nums;}
   .card-win {border-color:#E0A33E;}
-  .ledger {display:flex; justify-content:space-between; font-size:0.9rem; color:#DCE3EC;
-            padding:0.22rem 0;}
-  .ledger em {font-style:normal; color:#8FA3BF; font-size:0.78rem; margin-left:0.3rem;}
+  [data-testid="stColumn"]:has(.card) [data-testid="stVerticalBlock"],
+  [data-testid="stColumn"]:has(.card) [data-testid="stElementContainer"],
+  [data-testid="stColumn"]:has(.card) [data-testid="stMarkdown"],
+  [data-testid="stColumn"]:has(.card) [data-testid="stMarkdown"] > div,
+  [data-testid="stColumn"]:has(.card) [data-testid="stMarkdownContainer"] {height:100%;}
+  [data-testid="stColumn"]:has(.card) .card {min-height:100%; box-sizing:border-box;}
+  .cname {font-weight:700; font-size:1.05rem; line-height:1.3; height:2.6em; overflow:hidden;}
+  .csub {color:#8FA3BF; font-size:0.85rem; margin:0.15rem 0 0.8rem;}
+  .unit {color:#8FA3BF; font-size:0.72rem; text-transform:uppercase; letter-spacing:0.06em;
+         white-space:nowrap;}
+  .ledger {display:flex; justify-content:space-between; align-items:baseline; gap:0.5rem;
+           font-size:0.95rem; color:#DCE3EC; padding:0.2rem 0;}
+  .ledger span:last-child {white-space:nowrap;}
+  .ledger em {font-style:normal; color:#8FA3BF; font-size:0.8rem; margin-left:0.3rem;}
   .ledger.zero {color:#5F6F85;}
-  .ledger.total {border-top:1px solid #1E2836; margin-top:0.35rem; padding-top:0.55rem;
-                 font-weight:600; font-size:1.05rem; margin-bottom:0.9rem;}
-  .ledger.total span:last-child {font-size:1.6rem; line-height:1;}
-  .trio {display:grid; grid-template-columns:repeat(3, 1fr); gap:0.6rem;
-         border-top:1px solid #1E2836; padding-top:0.75rem;}
-  .cname {font-weight:600; font-size:1.02rem; margin-bottom:0.1rem; min-height:2.5em;}
-  .csub {color:#8FA3BF; font-size:0.8rem; margin-bottom:0.9rem;}
-  .big {font-size:1.8rem; font-weight:600; line-height:1.1;}
-  .mid {font-size:1.25rem; font-weight:600; line-height:1.15;}
-  .unit {color:#8FA3BF; font-size:0.77rem; text-transform:uppercase; letter-spacing:0.05em;}
-  .hlabel {color:#8FA3BF; font-size:0.78rem; text-transform:uppercase;
-           letter-spacing:0.05em; min-height:2.4em;}
-  .rsub {color:#8FA3BF; font-size:0.8rem;}
-  .down {color:#6ADFA0; font-size:0.82rem;}
-  .up {color:#E88C8C; font-size:0.82rem;}
+  .ledger.total {border-top:1px solid #1E2836; margin:0.35rem 0 0.75rem; padding-top:0.5rem;
+                 font-weight:700; font-size:1rem;}
+  .ledger.total span:last-child {font-size:1.2rem;}
+  .ledger.stat {font-size:0.92rem; color:#B8C4D4;}
+  .ledger.stat span:last-child {color:#DCE3EC; font-weight:700;}
+  .btable {width:100%; border-collapse:collapse; font-size:0.92rem;
+           font-variant-numeric: tabular-nums lining-nums;}
+  .btable th, .btable td {padding:0.45rem 0.6rem; border-bottom:1px solid #1E2836; text-align:right;}
+  .btable th:first-child, .btable td:first-child {text-align:left; color:#B8C4D4;}
+  .btable th {color:#8FA3BF; font-weight:600; font-size:0.85rem;}
+  .btable tr.strong td {font-weight:700; color:#DCE3EC;}
+  .big {font-size:1.45rem; font-weight:700; line-height:1.15;}
+  .mid {font-size:1rem; font-weight:700; line-height:1.3; white-space:nowrap;}
+  .hlabel {color:#8FA3BF; font-size:0.72rem; text-transform:uppercase; letter-spacing:0.06em;}
+  .rsub {color:#8FA3BF; font-size:0.85rem;}
+  .down {color:#6ADFA0; font-size:0.85rem;}
+  .up {color:#E88C8C; font-size:0.85rem;}
 </style>
 """, unsafe_allow_html=True)
 
 # symbol, indicative market rate per USD. The rate is only a starting point -
 # it is editable, and a user should enter the actual rate on the day.
 CURRENCIES = {
-    "NGN ₦": ("₦", 1550.0),
+    "NGN ₦": ("₦", 1330.0),
     "KES KSh": ("KSh", 129.0),
     "GHS ₵": ("₵", 12.0),
     "ZAR R": ("R", 18.0),
@@ -102,7 +115,7 @@ mkt_rate = st.sidebar.number_input(
     f"Market rate ({SYM} per USD)", 0.0, 1_000_000.0, DEFAULT_RATE, step,
     key=f"mkt_{CKEY}",
     help="The mid-market or official rate on the day. Every route's margin is measured against this. "
-         "The figure shown is indicative - replace it with the actual rate.",
+         "The default is the official NFEM rate in early October 2026. Replace it with the rate on the day.",
 )
 
 st.sidebar.markdown("---")
@@ -197,7 +210,7 @@ head = [
 for col, (label, value, sub) in zip(st.columns(3), head):
     with col:
         st.markdown(
-            f'<div class="card"><div class="hlabel">{label}</div>'
+            f'<div class="card kpi"><div class="hlabel">{label}</div>'
             f'<div class="big" style="margin:0.35rem 0 0.25rem;">{value}</div>'
             f'<div class="rsub">{sub}</div></div>',
             unsafe_allow_html=True,
@@ -208,6 +221,10 @@ def _line(label, value, sub=""):
     muted = " zero" if round(value) == 0 else ""
     return (f'<div class="ledger{muted}"><span>{label}{sub}</span>'
             f'<span>&#36;{value:,.0f}</span></div>')
+
+
+def _stat(label, value):
+    return f'<div class="ledger stat"><span>{label}</span><span>{value}</span></div>'
 
 
 for col, r in zip(st.columns(len(routes)), routes):
@@ -224,11 +241,10 @@ for col, r in zip(st.columns(len(routes)), routes):
             + _line("On/off-ramp", r["ramp"], f' <em>{r["ramp_pct"]:.2f}%</em>')
             + f'<div class="ledger total"><span>Total delivered cost</span>'
               f'<span>&#36;{r["total"]:,.0f}</span></div>'
-            f'<div class="trio">'
-            f'<div><div class="unit">Per year</div><div class="mid">&#36;{r["annual"]:,.0f}</div></div>'
-            f'<div><div class="unit">Time to land</div><div class="mid">{r["days"]:.2g} days</div></div>'
-            f'<div><div class="unit">Cash tied up</div><div class="mid">&#36;{r["tied_up"]:,.0f}</div></div>'
-            f'</div></div>',
+            + _stat("Per year", f"&#36;{r['annual']:,.0f}")
+            + _stat("Time to land", f"{r['days']:.2g} days")
+            + _stat("Cash tied up", f"&#36;{r['tied_up']:,.0f}")
+            + '</div>',
             unsafe_allow_html=True,
         )
 
@@ -246,9 +262,14 @@ with st.expander("See the full breakdown"):
         f"Cost of idle cash per year ({rate_pct}%)": lambda r: f"${r['carry']:,.0f}",
         "Total cost per year": lambda r: f"${r['annual']:,.0f}",
     }
-    st.dataframe(pd.DataFrame({"": list(rows_out)} | {r["name"]: [f(r) for f in rows_out.values()]
-                                                       for r in routes}),
-                 hide_index=True, width="stretch", height=35 * (len(rows_out) + 1) + 3)
+    strong = {"Total delivered cost per transfer", "Total cost per year"}
+    head = "".join(f"<th>{r['name']}</th>" for r in routes)
+    body = "".join(
+        f'<tr class="{"strong" if k in strong else ""}"><td>{k}</td>'
+        + "".join(f"<td>{f(r).replace('$', '&#36;')}</td>" for r in routes) + "</tr>"
+        for k, f in rows_out.items())
+    st.markdown(f'<table class="btable"><tr><th></th>{head}</tr>{body}</table>',
+                unsafe_allow_html=True)
 
 st.markdown("")
 if current["spread"] > current["fee"]:
@@ -301,7 +322,7 @@ for part in part_order:
         title=alt.TitleParams(part, anchor="start", color="#DCE3EC", fontSize=13,
                               fontWeight=600, offset=6)))
 small = alt.vconcat(*panels, spacing=22).configure_view(stroke=None).configure(
-    background="transparent")
+    background="transparent", font="Times New Roman")
 st.altair_chart(small, width="content")
 
 # ---------------------------------------------------------------- beyond cost
